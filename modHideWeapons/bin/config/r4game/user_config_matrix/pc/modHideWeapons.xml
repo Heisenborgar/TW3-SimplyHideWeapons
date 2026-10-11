@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<UserConfig>
+  <Group id="SimplyHideWeapons" displayName="Mods.simplyhideweapons">
+    <VisibleVars>
+      <Var id="shwHideSteel" displayName="shw_steel" displayType="OPTIONS">
+        <OptionsArray>
+          <Option id="0" displayName="shw_hidden"><Entry varId="shwHideSteel" value="0"/></Option>
+          <Option id="1" displayName="shw_shown"><Entry varId="shwHideSteel" value="1"/></Option>
+        </OptionsArray>
+      </Var>
+      <Var id="shwHideSilver" displayName="shw_silver" displayType="OPTIONS">
+        <OptionsArray>
+          <Option id="0" displayName="shw_hidden"><Entry varId="shwHideSilver" value="0"/></Option>
+          <Option id="1" displayName="shw_shown"><Entry varId="shwHideSilver" value="1"/></Option>
+        </OptionsArray>
+      </Var>
+      <Var id="shwHideCrossbow" displayName="shw_crossbow" displayType="OPTIONS">
+        <OptionsArray>
+          <Option id="0" displayName="shw_hidden"><Entry varId="shwHideCrossbow" value="0"/></Option>
+          <Option id="1" displayName="shw_shown"><Entry varId="shwHideCrossbow" value="1"/></Option>
+        </OptionsArray>
+      </Var>
+      <Var id="shwHideBolt" displayName="shw_bolt" displayType="OPTIONS">
+        <OptionsArray>
+          <Option id="0" displayName="shw_hidden"><Entry varId="shwHideBolt" value="0"/></Option>
+          <Option id="1" displayName="shw_shown"><Entry varId="shwHideBolt" value="1"/></Option>
+        </OptionsArray>
+      </Var>
+    </VisibleVars>
+  </Group>
+</UserConfig>

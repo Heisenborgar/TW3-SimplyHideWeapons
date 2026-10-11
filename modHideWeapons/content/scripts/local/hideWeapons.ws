@@ -1,4 +1,4 @@
-// Simply Hide Weapons - L3 hold (pad) + Period key (keyboard)
+// Simply Hide Weapons
 
 function SHW_ShowWhenDrawn() : bool
 {
@@ -10,58 +10,101 @@ function SHW_HideDelay() : float
 	return 1.5;
 }
 
-function SHW_IsScabbard(inv : CInventoryComponent, id : SItemUniqueId) : bool
+function SHW_SettingsRefresh() : float
+{
+	return 1.0;
+}
+
+function SHW_Opt(varName : name) : int
+{
+	return StringToInt(theGame.GetInGameConfigWrapper().GetVarValue('SimplyHideWeapons', varName), 0);
+}
+
+// 0 = not a scabbard, 1 = steel, 2 = silver
+function SHW_ScabbardKind(inv : CInventoryComponent, id : SItemUniqueId) : int
 {
 	var cat, nm : string;
 
 	cat = StrLower(NameToString(inv.GetItemCategory(id)));
+
+	if (StrContains(cat, "steel_scabbard"))
+		return 1;
+
+	if (StrContains(cat, "silver_scabbard"))
+		return 2;
+
 	nm = StrLower(NameToString(inv.GetItemName(id)));
 
-	return StrContains(cat, "scabbard") || StrContains(nm, "scabbard");
+	if (!StrContains(cat, "scabbard") && !StrContains(nm, "scabbard"))
+		return 0;
+
+	if (StrContains(nm, "silver"))
+		return 2;
+
+	return 1;
 }
 
 @addField(W3PlayerWitcher)
-var shwBolt : W3BoltProjectile;
+var shwNextSettings : float;
+
+@addField(W3PlayerWitcher)
+var shwHideSteel : bool;
+
+@addField(W3PlayerWitcher)
+var shwHideSilver : bool;
+
+@addField(W3PlayerWitcher)
+var shwHideCrossbow : bool;
+
+@addField(W3PlayerWitcher)
+var shwHideBolt : bool;
 
 @addField(W3PlayerWitcher)
 var shwHideAfter : float;
 
 @addField(W3PlayerWitcher)
-var shwEnabled : bool;
-
-@addField(W3PlayerWitcher)
-var shwRestored : bool;
-
-@addField(W3PlayerWitcher)
-var shwRestoreAt : float;
-
-@addField(W3PlayerWitcher)
-var shwL3HeldSince : float;
-
-@addField(W3PlayerWitcher)
-var shwL3WasDown : bool;
-
-@addField(W3PlayerWitcher)
-var shwKeyWasDown : bool;
+var shwBolt : W3BoltProjectile;
 
 @wrapMethod(W3PlayerWitcher)
 function OnSpawned(spawnData : SEntitySpawnData)
 {
 	wrappedMethod(spawnData);
 
-	// state lives in the save file as a fact
-	shwEnabled = FactsDoesExist('SHW_Enabled');
-	shwRestored = false;
-	shwRestoreAt = EngineTimeToFloat(theGame.GetEngineTime()) + 1.0;
-	shwL3HeldSince = 0.0;
-	shwL3WasDown = false;
-	shwKeyWasDown = false;
+	// old versions stored their state in the save
+	FactsRemove('SHW_On');
+	FactsRemove('SHW_Off');
+	FactsRemove('SHW_Enabled');
+
+	SHW_LoadSettings(false);
+	shwNextSettings = EngineTimeToFloat(theGame.GetEngineTime()) + SHW_SettingsRefresh();
 
 	AddTimer('SHW_Timer', 0.0, true);
 }
 
 @addMethod(W3PlayerWitcher)
-function SHW_ForceShowAll()
+function SHW_LoadSettings(apply : bool)
+{
+	var steel, silver, crossbow, bolt, changed : bool;
+
+	steel = SHW_Opt('shwHideSteel') == 0;
+	silver = SHW_Opt('shwHideSilver') == 0;
+	crossbow = SHW_Opt('shwHideCrossbow') == 0;
+	bolt = SHW_Opt('shwHideBolt') == 0;
+
+	changed = steel != shwHideSteel || silver != shwHideSilver || crossbow != shwHideCrossbow
+		|| bolt != shwHideBolt;
+
+	shwHideSteel = steel;
+	shwHideSilver = silver;
+	shwHideCrossbow = crossbow;
+	shwHideBolt = bolt;
+
+	if (changed && apply)
+		SHW_ShowAll();
+}
+
+@addMethod(W3PlayerWitcher)
+function SHW_ShowAll()
 {
 	var ids : array<SItemUniqueId>;
 	var ent : CItemEntity;
@@ -75,7 +118,8 @@ function SHW_ForceShowAll()
 			continue;
 
 		ent = inv.GetItemEntityUnsafe(ids[i]);
-		if (ent)
+
+		if (ent && (inv.IsItemWeapon(ids[i]) || SHW_ScabbardKind(inv, ids[i]) != 0))
 			ent.SetHideInGame(false);
 	}
 
@@ -87,134 +131,115 @@ function SHW_ForceShowAll()
 }
 
 @addMethod(W3PlayerWitcher)
-function SHW_Toggle()
-{
-	shwEnabled = !shwEnabled;
-	shwRestored = true;
-
-	if (shwEnabled)
-	{
-		if (!FactsDoesExist('SHW_Enabled'))
-			FactsAdd('SHW_Enabled');
-	}
-	else
-	{
-		if (FactsDoesExist('SHW_Enabled'))
-			FactsRemove('SHW_Enabled');
-
-		SHW_ForceShowAll();
-	}
-}
-
-@addMethod(W3PlayerWitcher)
-function SHW_CheckInput(now : float)
-{
-	var l3Down : bool;
-	var keyDown : bool;
-
-	// --- Keyboard: Period key, edge-triggered ---
-	keyDown = theInput.GetActionValue('SHW_ToggleAction') > 0.0;
-
-	if (keyDown && !shwKeyWasDown)
-		SHW_Toggle();
-
-	shwKeyWasDown = keyDown;
-
-	// --- Gamepad: L3 held 1 second ---
-	l3Down = theInput.GetActionValue('EnablePhotoMode_Step1') > 0.0;
-
-	if (l3Down && !shwL3WasDown)
-	{
-		shwL3HeldSince = now;
-	}
-	else if (l3Down && shwL3WasDown)
-	{
-		if (shwL3HeldSince > 0.0 && (now - shwL3HeldSince) >= 1.0)
-		{
-			SHW_Toggle();
-			shwL3HeldSince = 0.0;
-		}
-	}
-	else
-	{
-		shwL3HeldSince = 0.0;
-	}
-
-	shwL3WasDown = l3Down;
-}
-
-@addMethod(W3PlayerWitcher)
-timer function SHW_Timer(dt : float, id : int)
+function SHW_UpdateItems(now : float)
 {
 	var ids : array<SItemUniqueId>;
+	var id : SItemUniqueId;
 	var ent : CItemEntity;
-	var bolt : W3BoltProjectile;
-	var i : int;
-	var isWeapon, isScabbard, anyHeld : bool;
-	var now : float;
+	var drawn, hide : bool;
+	var want : EPlayerWeapon;
+	var kind, i : int;
 
-	now = EngineTimeToFloat(theGame.GetEngineTime());
-
-	SHW_CheckInput(now);
-
-	// facts may not be loaded yet at spawn, so read them once more a second later
-	if (!shwRestored && now >= shwRestoreAt)
-	{
-		shwRestored = true;
-		shwEnabled = FactsDoesExist('SHW_Enabled');
-	}
-
-	if (!shwEnabled)
-		return;
+	// set as soon as a draw starts, before the sword is in hand
+	want = GetCurrentMeleeWeaponType();
 
 	inv.GetAllItems(ids);
 
 	for (i = 0; i < ids.Size(); i += 1)
 	{
-		if (inv.IsItemMounted(ids[i]) && inv.IsItemWeapon(ids[i]) && inv.IsItemHeld(ids[i]))
-			anyHeld = true;
-	}
+		id = ids[i];
 
-	if (anyHeld)
-		shwHideAfter = now + SHW_HideDelay();
-
-	for (i = 0; i < ids.Size(); i += 1)
-	{
-		if (!inv.IsItemMounted(ids[i]))
+		if (!inv.IsItemMounted(id))
 			continue;
 
-		isWeapon = inv.IsItemWeapon(ids[i]);
-		isScabbard = SHW_IsScabbard(inv, ids[i]);
-
-		if (!isWeapon && !isScabbard)
-			continue;
-
-		ent = inv.GetItemEntityUnsafe(ids[i]);
-		if (!ent)
-			continue;
-
-		if (isScabbard)
-			ent.SetHideInGame(true);
-		else if (inv.IsItemHeld(ids[i]))
-			ent.SetHideInGame(!SHW_ShowWhenDrawn());
-		else if (now >= shwHideAfter)
-			ent.SetHideInGame(true);
-	}
-
-	if (rangedWeapon)
-	{
-		bolt = (W3BoltProjectile)rangedWeapon.GetDeployedEntity();
-
-		if (shwBolt && shwBolt != bolt)
+		if (inv.IsItemWeapon(id))
 		{
-			shwBolt.SetVisibility(true);
-			shwBolt = NULL;
-		}
+			drawn = inv.IsItemHeld(id);
 
-		if (bolt && bolt.IsStopped())
+			if (inv.IsItemSteelSwordUsableByPlayer(id))
+			{
+				hide = shwHideSteel;
+				drawn = drawn || want == PW_Steel;
+			}
+			else if (inv.IsItemSilverSwordUsableByPlayer(id))
+			{
+				hide = shwHideSilver;
+				drawn = drawn || want == PW_Silver;
+			}
+			else if (inv.IsItemCrossbow(id))
+				hide = shwHideCrossbow;
+			else
+				continue;
+
+			if (drawn)
+				shwHideAfter = now + SHW_HideDelay();
+
+			if (!hide)
+				continue;
+
+			ent = inv.GetItemEntityUnsafe(id);
+
+			if (!ent)
+				continue;
+
+			// has to be visible before the draw or the runes don't show
+			if (drawn)
+				ent.SetHideInGame(!SHW_ShowWhenDrawn());
+			else if (now >= shwHideAfter)
+				ent.SetHideInGame(true);
+		}
+		else
 		{
-			bolt.SetVisibility(false);
-			shwBolt = bolt;
+			kind = SHW_ScabbardKind(inv, id);
+
+			if ((kind == 1 && shwHideSteel) || (kind == 2 && shwHideSilver))
+			{
+				ent = inv.GetItemEntityUnsafe(id);
+
+				if (ent)
+					ent.SetHideInGame(true);
+			}
 		}
 	}
+}
+
+// the loaded bolt is a projectile, not an item
+@addMethod(W3PlayerWitcher)
+function SHW_UpdateBolt()
+{
+	var bolt : W3BoltProjectile;
+
+	if (!shwHideBolt || !rangedWeapon)
+		return;
+
+	bolt = (W3BoltProjectile)rangedWeapon.GetDeployedEntity();
+
+	if (shwBolt && shwBolt != bolt)
+	{
+		shwBolt.SetVisibility(true);
+		shwBolt = NULL;
+	}
+
+	if (bolt && bolt.IsStopped())
+	{
+		bolt.SetVisibility(false);
+		shwBolt = bolt;
+	}
+}
+
+@addMethod(W3PlayerWitcher)
+timer function SHW_Timer(dt : float, id : int)
+{
+	var now : float;
+
+	now = EngineTimeToFloat(theGame.GetEngineTime());
+
+	if (now >= shwNextSettings)
+	{
+		shwNextSettings = now + SHW_SettingsRefresh();
+		SHW_LoadSettings(true);
+	}
+
+	SHW_UpdateItems(now);
+	SHW_UpdateBolt();
 }
